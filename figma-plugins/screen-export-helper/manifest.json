@@ -1,0 +1,9 @@
+{
+  "name": "Bitcoin screen export helper",
+  "id": "1029387768767156450",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": [
+    "figma"
+  ]
+}
