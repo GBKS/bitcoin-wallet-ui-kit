@@ -15,7 +15,9 @@ function findScreenInfos() {
 function gatherScreenDescriptionDetails(node) {
     const data = {
         id: null,
-        title: null
+        title: null,
+        links: null,
+        flow: null
     };
     // Extract screen data.
     getInfoText(node, data, 'Title');
@@ -23,10 +25,30 @@ function gatherScreenDescriptionDetails(node) {
     getInfoText(node, data, 'Flow');
     getInfoText(node, data, 'Page');
     getInfoText(node, data, 'Pagemax');
-    data.id = slugify(data.title);
-    findScreenDesign(data);
+    // Find external links.
+    const links = findScreenLinks(node);
+    if (links.length > 0) {
+        data.links = links;
+    }
+    // Create a unique id that's also used for the file name
+    // Includes the flow to prevent duplication
+    const idParts = [];
+    if (data.flow) {
+        idParts.push(data.flow);
+    }
+    idParts.push(data.title);
+    data.id = slugify(idParts.join('_'));
+    // Find the matching screen design node.
+    findScreenDesign(node, data);
+    // Clear any empty data fields.
+    for (let i in data) {
+        if (data[i] === null) {
+            delete data[i];
+        }
+    }
     result.push(data);
 }
+// Retrieve text of a specific TextNode.
 function getInfoText(node, data, childName) {
     const textNode = node.findAll(n => n.name === childName);
     if (textNode.length == 1) {
@@ -51,21 +73,30 @@ function slugify(str) {
         .replace(/-+/g, '-'); // collapse dashes
     return str;
 }
-function findScreenDesign(data) {
+function findScreenDesign(infoNode, data) {
     // Find the matching screen design (same as title of this info instance.
-    const nodes = figma.currentPage.findChildren(n => n.name === data.title);
+    const nodes = figma.currentPage.findChildren(n => (n.name === data.title));
+    let text, deltaX, deltaY, distance;
     for (const node of nodes) {
-        // console.log('node', node.name, node.type);
         if (!(node.type == 'INSTANCE' && node.mainComponent.parent.name == 'Screen description')) {
-            data.screen = node;
-            data.width = node.width;
-            data.height = node.height;
-            data.text = findScreenTextContent(node);
-            break;
+            // Check distance of the screen node and the info node
+            // There might be nodes with the same name, so distance
+            //  measurement helps identify the right one
+            deltaX = node.x - infoNode.x;
+            deltaY = node.y - infoNode.y;
+            distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            if (distance < 1500) {
+                data.screen = node;
+                data.width = node.width;
+                data.height = node.height;
+                text = findScreenTextContent(node);
+                if (text.length > 0) {
+                    data.text = text;
+                }
+                break;
+            }
         }
     }
-    // console.log('data.title', data.Title);
-    // console.log('a', nodes);
 }
 // Deletes hidden children
 function deleteHiddenChildren(nodeInstance) {
@@ -83,9 +114,10 @@ function deleteHiddenChildren(nodeInstance) {
         }
     }
 }
+// Find all text nodes and grab their copy.
 function findScreenTextContent(node) {
     const result = [];
-    const nodes = node.findAll(n => n.type === 'TEXT');
+    const nodes = node.findAll(n => (n.type === 'TEXT' && n.visible && n.name != 'Link'));
     const excludes = [
         '22:03',
         'Back',
@@ -94,13 +126,28 @@ function findScreenTextContent(node) {
     ];
     let text;
     for (const node of nodes) {
-        if (node.visible) {
-            text = node.characters;
-            if (text.length > 3 &&
-                excludes.indexOf(text) === -1 &&
-                result.indexOf(text) === -1) {
-                result.push(text);
-            }
+        text = node.characters;
+        if (text.length > 3 &&
+            excludes.indexOf(text) === -1 &&
+            result.indexOf(text) === -1) {
+            result.push(text);
+        }
+    }
+    return result;
+}
+// Find  links in an info node.
+function findScreenLinks(node) {
+    const result = [];
+    const nodes = node.findAll(n => (n.type === 'TEXT' && n.visible && n.name == 'Link'));
+    let text, link;
+    for (const node of nodes) {
+        text = node.characters;
+        link = node.hyperlink;
+        if (text && text.length > 0 && link && link.type == 'URL') {
+            result.push({
+                title: text,
+                url: link.value
+            });
         }
     }
     return result;
@@ -113,6 +160,7 @@ function prepareNewPage() {
     // Go to our new page.
     figma.currentPage = newPage;
 }
+// Prepares screen clones with the right export settings.
 function duplicateScreens() {
     let item, newNode;
     for (let i = 0; i < result.length; i++) {
