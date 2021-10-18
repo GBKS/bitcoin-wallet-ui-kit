@@ -169,6 +169,8 @@ function duplicateScreens() {
             newNode = item.screen.clone();
             newNode.name = item.id;
             newNode.cornerRadius = 40;
+            newNode.x = newNodes.length % 10 * 475;
+            newNode.y = Math.floor(newNodes.length / 10) * 912;
             newNode.exportSettings = [
                 {
                     contentsOnly: true,
@@ -176,7 +178,7 @@ function duplicateScreens() {
                     suffix: '-preview',
                     constraint: {
                         type: 'WIDTH',
-                        value: 250
+                        value: 200
                     }
                 },
                 {
@@ -185,7 +187,7 @@ function duplicateScreens() {
                     suffix: '-preview@2x',
                     constraint: {
                         type: 'WIDTH',
-                        value: 500
+                        value: 400
                     }
                 },
                 {
@@ -208,6 +210,7 @@ function duplicateScreens() {
             ];
             deleteHiddenChildren(newNode);
             newPage.appendChild(newNode);
+            newNodes.push(newNode);
         }
         else {
             console.log('info without a screen?', item);
@@ -217,7 +220,8 @@ function duplicateScreens() {
 // Create a text node to store JSON data.
 function prepareDataOutput() {
     const textNode = figma.createText();
-    textNode.x = 1000;
+    textNode.x = -1100;
+    textNode.y = 0;
     textNode.resize(1000, 1000);
     for (let i = 0; i < result.length; i++) {
         delete result[i].screen;
@@ -228,10 +232,12 @@ function prepareDataOutput() {
 }
 const result = [];
 let newPage;
+const newNodes = [];
 findScreenInfos();
 prepareNewPage();
 duplicateScreens();
 prepareDataOutput();
+newPage.selection = newNodes;
 console.log('result', result);
 // Wrap up.
 figma.closePlugin();
