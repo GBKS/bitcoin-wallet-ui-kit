@@ -277,18 +277,41 @@ function prepareDataOutput() {
   })
 }
 
-const result = [];
-let newPage;
+function scanPages() {
+  const pages = figma.root.children
+  let page, name
+  for(let i=0; i<pages.length; i++) {
+    page = pages[i]
+    name = page.name
+
+    if(name == '-') {
+      break
+    } else {
+      scanPage(page)
+    }
+  }
+}
+
+function scanPage(page) {
+  console.log('scanPage', page)
+
+  figma.currentPage = page
+
+  findScreenInfos();
+}
+
+const result = []
+let newPage
 const newNodes = []
 
-findScreenInfos();
-prepareNewPage();
-duplicateScreens();
-prepareDataOutput();
+scanPages()
+prepareNewPage()
+duplicateScreens()
+prepareDataOutput()
 
 newPage.selection = newNodes
 
-console.log('result', result);
+console.log('result', result)
 
 // Wrap up.
-figma.closePlugin();
+figma.closePlugin()

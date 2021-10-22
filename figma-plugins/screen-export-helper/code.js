@@ -230,10 +230,29 @@ function prepareDataOutput() {
         textNode.characters = JSON.stringify(result);
     });
 }
+function scanPages() {
+    const pages = figma.root.children;
+    let page, name;
+    for (let i = 0; i < pages.length; i++) {
+        page = pages[i];
+        name = page.name;
+        if (name == '-') {
+            break;
+        }
+        else {
+            scanPage(page);
+        }
+    }
+}
+function scanPage(page) {
+    console.log('scanPage', page);
+    figma.currentPage = page;
+    findScreenInfos();
+}
 const result = [];
 let newPage;
 const newNodes = [];
-findScreenInfos();
+scanPages();
 prepareNewPage();
 duplicateScreens();
 prepareDataOutput();
