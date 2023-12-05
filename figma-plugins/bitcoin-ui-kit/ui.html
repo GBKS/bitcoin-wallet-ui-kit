@@ -1,0 +1,495 @@
+<div id="list" class="-panel"></div>
+<div id="message"></div>
+
+<script>
+
+let messageTimer
+function showMessage(message) {
+  const element = document.getElementById('message')
+  element.innerHTML = '<p>' + message + '</p>'
+  element.classList.add('-visible')
+
+  if(messageTimer) clearTimeout(messageTimer)
+  messageTimer = setTimeout(hideMessage, 5000)
+}
+
+function hideMessage() {
+  const element = document.getElementById('message')
+  element.classList.remove('-visible')
+}
+
+const messageElement = document.getElementById('message')
+messageElement.addEventListener('click', hideMessage)
+
+/*
+{
+  title: '',
+  description: ''
+  back: true,
+  mode: true,
+  action: 'select',
+  items: [
+    {
+      text: ''
+      id: '',
+      action: 'select'  
+    }
+  ] 
+}
+ */
+function renderClickableList(data) {
+  // console.log('renderClickableList', data)
+  let html = ''
+
+  if(data.back || data.title) {
+    html += '<div class="top">'
+    if(data.back) html += '<button id="list-back"><svg viewBox="0 0 6 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.94984 1L0.7072 5.24264C0.316676 5.63316 0.316676 6.26633 0.7072 6.65685L4.94984 10.8995" stroke="currentColor" stroke-width="0.75" stroke-linecap="round"/></svg></button>'
+    if(data.title) html += '<h3>'+data.title+'</h3>'
+    html += '</div>'
+  }
+
+  if(data.description) html += '<p class="-description">'+data.description+'</p>'
+  html += '<div id="list-items">'
+
+  if(data.items) {
+    let i=0, item
+    for(; i<data.items.length; i++) {
+      item = data.items[i]
+      // console.log(i, item)
+
+      if(item.id || item.action) {
+        html += '<button data-id="'+item.id+'" data-page="'+item.page+'" data-action="'+item.action+'">'+item.text+'</button>'
+      } else if(item.url) {
+        html += '<a href="'+item.url+'" target="_blank">'+item.text+'</a>'
+      } else if(item.text == '') {
+        html += '<br/>'
+      } else {
+        html += '<h3>'+item.text+'</h3>'
+      }
+    }
+    html += '</div>'
+  }
+
+  const list = document.getElementById('list')
+  list.innerHTML = html
+
+  if(data.items) {
+    const listItems = document.getElementById('list-items')
+    // console.log('listItems', listItems)
+    const items = listItems.querySelectorAll('button')
+    for(i=0; i<items.length; i++) {
+      item = items[i]
+      item.addEventListener('click', (event) => {
+        const id = event.target.getAttribute('data-id') || null
+        const page = event.target.getAttribute('data-page') || null
+        let action = event.target.getAttribute('data-action')
+        if(!action || action === 'undefined') action = data.action
+        parent.postMessage({ 
+          pluginMessage: { 
+            type: action, 
+            id, 
+            page,
+            shiftKey: event.shiftKey 
+          }}, '*')
+      })
+    }
+  }
+
+  // Hook up the back button
+  if(data.back) {
+    const backButton = document.getElementById('list-back')
+    if(backButton) {
+      const ref = this
+      backButton.addEventListener('click', (event) => {
+        ref.showPanel('nav')
+      })
+    }
+  }
+
+  showPanel('list')
+}
+
+function renderMainOptions() {
+  renderClickableList({
+    back: false,
+    mode: true,
+    items: [
+      {
+        text: 'Apply theme 🎨',
+        action: 'apply-theme'
+      },
+      {
+        text: 'Find unstyled text',
+        action: 'lint'
+      },
+      {
+        text: 'Find instances',
+        action: 'find-instances'
+      },
+      {
+        text: 'Component insights',
+        action: 'component-insights'
+      },
+      {
+        text: ''
+      },
+      {
+        text: 'Bitcoin UI Kit',
+        url: 'https://www.bitcoinuikit.com'
+      },
+      {
+        text: 'Bitcoin Design Guide',
+        url: 'https://bitcoin.design/guide/'
+      },
+      {
+        text: ''
+      },
+      {
+        text: 'Prep website export',
+        action: 'export'
+      }
+    ]
+  })
+}
+
+function showPanel(id) {
+  const elements = document.getElementsByClassName('-panel')
+  let i=0, element
+  for(; i<elements.length; i++) {
+    element = elements[i]
+    if(element.id == id) element.classList.remove('-hide')
+    else element.classList.add('-hide')
+  }
+
+  if(id == 'nav') {
+    renderMainOptions()
+  }
+}
+
+function renderLint(message) {
+  // console.log('renderLint', message)
+  const items = []
+
+  let html = '', i=0, element
+  for(i=0; i<message.elements.length; i++) {
+    element = message.elements[i]
+
+    items.push({
+      text: element.text + ' <span>' + element.size + '</span>',
+      id: element.id
+    })
+  }
+
+  const data = {
+    title: 'Unstyled texts',
+    description: 'Make sure all text fields use text styles.',
+    back: true,
+    action: 'select'
+  }
+
+  if(items.length > 0) {
+    data.items = items
+    renderClickableList(data)
+  } else {
+    showMessage(message.message)
+  }
+
+}
+
+function renderComponentInsights(data) {
+  // console.log('renderComponentInsights', data[0])
+
+  const items = []
+  let i, k, bit, instance, page, count, type
+  for(i=0; i<data.pages.length; i++) {
+    page = data.pages[i]
+
+    // Show page name
+    items.push({
+      text: page.name
+    })
+
+    // Removed components
+    for(k=0; k<page.components.length; k++) {
+      instance = page.components[k]
+
+      items.push({
+        id: instance.id,
+        page: page.name,
+        text: instance.name
+      })
+    }
+
+    // Instances whose components are remote or were removed
+    for(k=0; k<page.instances.length; k++) {
+      instance = page.instances[k]
+
+      items.push({
+        id: instance.id,
+        page: page.name,
+        text: instance.name + ' <span class="dot -' + (instance.main.remote ? 'blue' : 'red') + '" />'
+      })
+    }
+  }
+
+  renderClickableList({
+    title: 'Component insights',
+    description: 'This is a list of instances whose component is either in another file (blue dot), or has been deleted (red dot).',
+    back: true,
+    action: 'select-by-page-and-id',
+    items
+  })
+}
+
+function renderComponentInstances(data, message) {
+  // console.log('renderComponentInstances', data, message)
+  const html = []
+
+  if(data) {
+    if(data.instances.length > 0) {
+      const items = []
+
+      let i, k, bit, instance, count, type, page
+      for(i=0; i<data.instances.length; i++) {
+        instance = data.instances[i]
+
+        if(instance.page != page) {
+          page = instance.page
+          items.push({
+            text: page  
+          })
+        }
+
+        items.push({
+          text: instance.name,
+          id: instance.id,
+          page: instance.page
+        })
+      }
+
+      renderClickableList({
+        title: 'Find instances',
+        back: true,
+        action: 'select-by-page-and-id',
+        items
+      })
+    } else {
+      showMessage('No instances were found. Make sure to select the main component.')
+    }
+  } else {
+    showMessage('Select one main component or component variant and try again.')
+    // renderClickableList({
+    //   title: 'Find instances',
+    //   back: true,
+    //   description: 'No instances were found of the selected component.'
+    // })
+  }
+}
+
+onmessage = (event) => {
+  const message = event.data.pluginMessage
+  console.log('onmessage', message)
+  
+  if(message.type == 'lint') {
+    renderLint(message)
+  } else if(message.type == 'component-insights') {
+    renderComponentInsights(message.data)
+    // componentInsightsButton.innerHTML = 'Component insights'
+  } else if(message.type == 'find-instances') {
+    renderComponentInstances(message.data, message.message)
+  } else if(message.type == 'apply-theme') {
+    showMessage(message.message)
+  } else if(message.type == 'general-message') {
+    console.log('showMessage', message.message)
+    showMessage(message.message)
+  }
+}
+
+// setupEvents()
+renderMainOptions()
+
+</script>
+
+<style>
+
+body {
+  background-color: var(--figma-color-bg);
+  background-color: #EAEDEE;
+  color: var(--figma-color-text);
+  position: relative;
+}
+
+.-hide {
+  display: none !important;
+}
+
+#message {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: black;
+  transition: all 250ms ease-in-out;
+  transform: translateY(100%);
+}
+
+#message p {
+  margin: 0;
+  padding: 15px 15px;
+  font-size: 13px;
+  font-family: sans-serif;
+  color: white;
+  text-align: center;
+}
+
+#message.-visible {
+  transform: translateY(0%);
+}
+
+#nav {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+#list .mode {
+  display: flex;
+  padding-bottom: 5px;
+  gap: 5px;
+}
+
+#list .mode button {
+  flex-grow: 1;
+  display: block;
+  appearance: none;
+  text-align: center;
+  font-size: 13px;
+  padding: 10px 10px;
+  border-width: 0;
+  background-color: #F4F6F7;
+  transition: all 100ms ease-in-out;
+  border-radius: 5px;
+}
+
+#list .mode button svg {
+  width: 20px;
+  height: 20px;
+  color: black;
+}
+
+#list .mode button:hover {
+  cursor: pointer;
+  background-color: #DCDDDE;
+}
+
+/* List */
+
+#list .top {
+  display: flex;
+}
+
+#list .top button {
+  appearance: none;
+  border-width: 0;
+  color: black;
+  opacity: 0.75;
+  cursor: pointer;
+  transition: all 100ms ease-in-out;
+}
+
+#list .top button:hover {
+  opacity: 1;
+}
+
+#list .top button svg {
+  width: 10px;
+  height: 10px;
+}
+
+#list .top h3 {
+  flex-grow: 1;
+  margin: 0;
+  padding: 7px 7px;
+  font-size: 13px;
+  font-family: sans-serif;
+}
+
+#list > p {
+  margin: 0;
+  padding: 0 7px;
+  opacity: 0.75;
+  font-size: 13px;
+  font-family: sans-serif;
+}
+
+#list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: stretch;
+}
+
+#list-items button,
+#list-items a {
+  text-align: left;
+  display: block;
+  appearance: none;
+  border-width: 0;
+  padding: 7px 10px;
+  font-size: 11px;
+  border-radius: 5px;
+  font-family: sans-serif;
+  background-color: #F4F6F7;
+  font-weight: 500;
+  transition: all 100ms ease-in-out;
+  color: black;
+}
+
+#list-items a {
+  text-decoration: none;
+}
+
+#list-items button span {
+  font-size: 10px;
+  opacity: 0.75;
+  background-color: #EAEDEE;
+  padding: 3px 4px;
+  border-radius: 2px;
+  font-weight: 600;
+  vertical-align: middle;
+  text-transform: uppercase;
+  display: inline-block;
+  margin-left: 3px;
+}
+
+#list-items button .dot {
+  margin-left: 3px;
+  width: 4px;
+  height: 4px;
+  padding: 0;
+  border-radius: 10px;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+#list-items button .dot.-red {
+  background-color: red;
+}
+
+#list-items button .dot.-blue {
+  background-color: blue;
+}
+
+#list-items button:hover {
+  cursor: pointer;
+  background-color: #DCDDDE;
+}
+
+#list-items h3 {
+  margin: 0;
+  padding: 7px 7px;
+  font-size: 13px;
+  font-family: sans-serif;
+}
+
+</style>
