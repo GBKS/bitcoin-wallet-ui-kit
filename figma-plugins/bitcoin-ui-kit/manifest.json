@@ -1,0 +1,15 @@
+{
+  "name": "Bitcoin UI Kit",
+  "id": "1254869452790045259",
+  "api": "1.0.0",
+  "main": "code.js",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "editorType": [
+    "figma"
+  ],
+  "ui": "ui.html",
+  "networkAccess": { 
+    "allowedDomains": ["none"]
+  }
+}
