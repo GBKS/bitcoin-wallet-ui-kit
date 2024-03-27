@@ -55,7 +55,6 @@ function renderClickableList(data) {
     let i=0, item
     for(; i<data.items.length; i++) {
       item = data.items[i]
-      // console.log(i, item)
 
       if(item.id || item.action) {
         html += '<button data-id="'+item.id+'" data-page="'+item.page+'" data-action="'+item.action+'">'+item.text+'</button>'
@@ -80,9 +79,9 @@ function renderClickableList(data) {
     for(i=0; i<items.length; i++) {
       item = items[i]
       item.addEventListener('click', (event) => {
-        const id = event.target.getAttribute('data-id') || null
-        const page = event.target.getAttribute('data-page') || null
-        let action = event.target.getAttribute('data-action')
+        const id = event.currentTarget.getAttribute('data-id') || null
+        const page = event.currentTarget.getAttribute('data-page') || null
+        let action = event.currentTarget.getAttribute('data-action')
         if(!action || action === 'undefined') action = data.action
         parent.postMessage({ 
           pluginMessage: { 
@@ -288,7 +287,7 @@ function renderComponentInstances(data, message) {
 
 onmessage = (event) => {
   const message = event.data.pluginMessage
-  console.log('onmessage', message)
+  // console.log('onmessage', message)
   
   if(message.type == 'lint') {
     renderLint(message)

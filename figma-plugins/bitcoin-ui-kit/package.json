@@ -1,6 +1,6 @@
 {
   "name": "Bitcoin-UI-Kit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The helper plugin for the Bitcoin UI Kit for quickly assigning style sets, keeping the design system clean, and more.",
   "main": "code.js",
   "scripts": {
