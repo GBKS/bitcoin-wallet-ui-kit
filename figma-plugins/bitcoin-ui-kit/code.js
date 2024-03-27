@@ -1,9 +1,19 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 figma.showUI(__html__, {
     themeColors: true,
     width: 200,
     height: 300
 });
 figma.ui.onmessage = message => {
+    // console.log('onmessage', message.type)
     if (message.type === 'lint') {
         let selection = figma.currentPage.selection;
         let selectionType = 'user';
@@ -20,78 +30,82 @@ figma.ui.onmessage = message => {
         selectElementByPageAndId(message.page, message.id, message.shiftKey);
     }
     else if (message.type === 'export') {
-        screenExporter.start();
+        exporterStart();
     }
     else if (message.type === 'component-insights') {
-        componentInsights.start();
+        insightsStart();
     }
     else if (message.type === 'apply-theme') {
-        theme.start();
+        themeStart();
     }
     else if (message.type === 'find-instances') {
-        findInstances.start();
+        findInstancesStart();
     }
 };
 function select(id, shiftKey) {
-    const node = figma.getNodeById(id);
-    if (node) {
-        if (shiftKey) {
-            // @ts-ignore
-            figma.currentPage.selection = figma.currentPage.selection.concat(node);
-            figma.viewport.scrollAndZoomIntoView(figma.currentPage.selection);
+    return __awaiter(this, void 0, void 0, function* () {
+        // console.log('select', id)
+        const node = yield figma.getNodeByIdAsync(id);
+        if (node) {
+            if (shiftKey) {
+                // @ts-ignore
+                figma.currentPage.selection = figma.currentPage.selection.concat(node);
+                figma.viewport.scrollAndZoomIntoView(figma.currentPage.selection);
+            }
+            else {
+                // @ts-ignore
+                figma.currentPage.selection = [node];
+                figma.viewport.scrollAndZoomIntoView([node]);
+            }
         }
         else {
-            // @ts-ignore
-            figma.currentPage.selection = [node];
-            figma.viewport.scrollAndZoomIntoView([node]);
+            figma.ui.postMessage({
+                type: 'general-message',
+                message: 'Could not find this element.'
+            });
         }
-    }
-    else {
-        figma.ui.postMessage({
-            type: 'general-message',
-            message: 'Could not find this element.'
-        });
-    }
+    });
 }
 function selectElementByPageAndId(pageName, id, shiftKey) {
-    let node;
-    if (figma.currentPage.name == pageName) {
-        node = figma.getNodeById(id);
-        // node = figma.currentPage.findOne(node => node.id == id)
-    }
-    else {
-        const pages = figma.root.children;
-        let page, name, node;
-        for (let i = 0; i < pages.length; i++) {
-            page = pages[i];
-            if (page.name == pageName) {
-                node = figma.getNodeById(id);
-                // node = page.findOne(node => node.id == id)
-                if (node) {
-                    figma.currentPage = page;
-                    break;
+    return __awaiter(this, void 0, void 0, function* () {
+        let node;
+        let foundNode = false;
+        if (figma.currentPage.name == pageName) {
+            node = yield figma.getNodeByIdAsync(id);
+        }
+        else {
+            const pages = figma.root.children;
+            let page, name;
+            for (let i = 0; i < pages.length; i++) {
+                page = pages[i];
+                if (page.name == pageName) {
+                    yield figma.setCurrentPageAsync(page);
+                    node = yield figma.getNodeByIdAsync(id);
+                    if (node) {
+                        break;
+                    }
                 }
             }
         }
-    }
-    if (!!node) {
-        if (shiftKey) {
-            // @ts-ignore
-            figma.currentPage.selection = figma.currentPage.selection.concat(node);
-            figma.viewport.scrollAndZoomIntoView(figma.currentPage.selection);
+        if (!!node) {
+            if (shiftKey) {
+                // @ts-ignore
+                figma.currentPage.selection = figma.currentPage.selection.concat(node);
+                figma.viewport.scrollAndZoomIntoView(figma.currentPage.selection);
+            }
+            else {
+                // @ts-ignore
+                figma.currentPage.selection = [node];
+                figma.viewport.scrollAndZoomIntoView([node]);
+            }
         }
         else {
-            // @ts-ignore
-            figma.currentPage.selection = [node];
-            figma.viewport.scrollAndZoomIntoView([node]);
+            figma.ui.postMessage({
+                type: 'general-message',
+                message: 'Could not find this element.'
+            });
         }
-    }
-    else {
-        figma.ui.postMessage({
-            type: 'general-message',
-            message: 'Could not find this element.'
-        });
-    }
+    });
 }
 // Linter - find unstyled text fields
 function lint(elements, selectionType) {
@@ -140,38 +154,40 @@ function lintElements(elements, output) {
 // Style indexer
 let styles;
 function indexStyles() {
-    if (!!styles)
-        return;
-    const stylesArray = figma.getLocalPaintStyles();
-    styles = {};
-    const stylesByName = {};
-    let i = 0, style;
-    for (i = 0; i < stylesArray.length; i++) {
-        style = stylesArray[i];
-        if (style.name.indexOf('Light/') === 0 || style.name.indexOf('Dark/') === 0) {
-            styles[style.id] = { name: style.name };
-            stylesByName[style.name] = style.id;
-        }
-    }
-    let toggledName, index;
-    for (let k in styles) {
-        style = styles[k];
-        index = style.name.indexOf('Light/');
-        if (index === 0) {
-            toggledName = 'Dark/' + style.name.substr(6);
-            if (stylesByName[toggledName]) {
-                style.toggleId = stylesByName[toggledName];
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!!styles)
+            return;
+        const stylesArray = yield figma.getLocalPaintStylesAsync();
+        styles = {};
+        const stylesByName = {};
+        let i = 0, style;
+        for (i = 0; i < stylesArray.length; i++) {
+            style = stylesArray[i];
+            if (style.name.indexOf('Light/') === 0 || style.name.indexOf('Dark/') === 0) {
+                styles[style.id] = { name: style.name };
+                stylesByName[style.name] = style.id;
             }
         }
-        index = style.name.indexOf('Dark/');
-        if (index === 0) {
-            toggledName = 'Light/' + style.name.substr(5);
-            if (stylesByName[toggledName]) {
-                style.toggleId = stylesByName[toggledName];
+        let toggledName, index;
+        for (let k in styles) {
+            style = styles[k];
+            index = style.name.indexOf('Light/');
+            if (index === 0) {
+                toggledName = 'Dark/' + style.name.substr(6);
+                if (stylesByName[toggledName]) {
+                    style.toggleId = stylesByName[toggledName];
+                }
+            }
+            index = style.name.indexOf('Dark/');
+            if (index === 0) {
+                toggledName = 'Light/' + style.name.substr(5);
+                if (stylesByName[toggledName]) {
+                    style.toggleId = stylesByName[toggledName];
+                }
             }
         }
-    }
-    // console.log('styles', styles)
+        // console.log('styles', styles)
+    });
 }
 // Toggle to light or dark mode
 function toggleMode(elements, from) {
@@ -204,344 +220,69 @@ function toggleMode(elements, from) {
 }
 /*
 
-Screen export stuff below
-
- */
-const screenExporter = {
-    findSelectedScreenInfos() {
-        // Get all selected nodes.
-        const nodes = figma.currentPage.selection;
-        for (const node of nodes) {
-            // console.log('node', node.name, node.type);
-            if (node.type == 'INSTANCE') {
-                if (node.mainComponent.parent.name == 'Screen description') {
-                    // Gather details.
-                    // console.log('mainComponent', node.name, node.mainComponent.name, node.mainComponent.parent.name);
-                    this.gatherScreenDescriptionDetails(node);
-                }
-            }
-        }
-    },
-    findScreenInfos() {
-        // Get all nodes directly on the page.
-        // console.log('findScreenInfos', figma.currentPage);
-        const nodeInstances = figma.currentPage.findChildren(n => n.type === "INSTANCE");
-        // console.log('nodeInstances', nodeInstances);
-        for (const node of nodeInstances) {
-            // console.log('node', node);
-            // console.log('name', node.name);
-            // console.log('type', node.type);
-            if (node.type == 'INSTANCE') {
-                // console.log('type is instance');
-                // console.log('mainComponent', node.mainComponent);
-                // console.log('node.mainComponent.parent', node.mainComponent.parent);
-                if (node.mainComponent.parent.name == 'Screen description') {
-                    // Gather details.
-                    // console.log('mainComponent', node.name, node.mainComponent.name, node.mainComponent.parent.name);
-                    this.gatherScreenDescriptionDetails(node);
-                }
-            }
-        }
-    },
-    gatherScreenDescriptionDetails(node) {
-        const data = {
-            id: null,
-            title: null,
-            links: null,
-            flow: null
-        };
-        // Extract screen data.
-        this.getInfoText(node, data, 'Title');
-        this.getInfoText(node, data, 'Description');
-        this.getInfoText(node, data, 'Flow');
-        this.getInfoText(node, data, 'Page');
-        this.getInfoText(node, data, 'Pagemax');
-        // Find external links.
-        const links = this.findScreenLinks(node);
-        if (links.length > 0) {
-            data.links = links;
-        }
-        // Create a unique id that's also used for the file name
-        // Includes the flow to prevent duplication
-        const idParts = [];
-        if (data.flow) {
-            idParts.push(data.flow);
-        }
-        idParts.push(data.title);
-        data.id = this.slugify(idParts.join('_'));
-        // Find the matching screen design node.
-        this.findScreenDesign(node, data);
-        // Clear any empty data fields.
-        for (let i in data) {
-            if (data[i] === null) {
-                delete data[i];
-            }
-        }
-        this.result.push(data);
-    },
-    // Retrieve text of a specific TextNode.
-    getInfoText(node, data, childName) {
-        const textNode = node.findAll(n => n.name === childName);
-        if (textNode.length == 1) {
-            const text = textNode[0].characters;
-            // console.log('a', childName, text);
-            if (text != childName) {
-                data[this.slugify(childName)] = text;
-            }
-        }
-    },
-    slugify(str) {
-        str = str.replace(/^\s+|\s+$/g, ''); // trim
-        str = str.toLowerCase();
-        // remove accents, swap ñ for n, etc
-        var from = "àáäâèéëêìíïîòóöôùúüûñç·/_,:;";
-        var to = "aaaaeeeeiiiioooouuuunc------";
-        for (var i = 0, l = from.length; i < l; i++) {
-            str = str.replace(new RegExp(from.charAt(i), 'g'), to.charAt(i));
-        }
-        str = str.replace(/[^a-z0-9 -]/g, '') // remove invalid chars
-            .replace(/\s+/g, '-') // collapse whitespace and replace by -
-            .replace(/-+/g, '-'); // collapse dashes
-        return str;
-    },
-    findScreenDesign(infoNode, data) {
-        // Find the matching screen design (same as title of this info instance.
-        const nodes = figma.currentPage.findChildren(n => (n.name === data.title));
-        let text, deltaX, deltaY, distance;
-        for (const node of nodes) {
-            if (!(node.type == 'INSTANCE' && node.mainComponent.parent.name == 'Screen description')) {
-                // Check distance of the screen node and the info node
-                // There might be nodes with the same name, so distance
-                //  measurement helps identify the right one
-                deltaX = node.x - infoNode.x;
-                deltaY = node.y - infoNode.y;
-                distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                if (distance < 1500) {
-                    data.screen = node;
-                    data.width = node.width;
-                    data.height = node.height;
-                    text = this.findScreenTextContent(node);
-                    if (text.length > 0) {
-                        data.text = text;
-                    }
-                    break;
-                }
-            }
-        }
-    },
-    // Deletes hidden children
-    deleteHiddenChildren(nodeInstance) {
-        let child;
-        for (let i = 0; i < nodeInstance.children.length; i++) {
-            child = nodeInstance.children[i];
-            if (child.visible !== true) {
-                // Delete invisible child.
-                child.remove();
-                i--;
-            }
-            else if (child.type == 'GROUP') {
-                // If it's a group, go deeper.
-                this.deleteHiddenChildren(child);
-            }
-        }
-    },
-    // Find all text nodes and grab their copy.
-    findScreenTextContent(node) {
-        const result = [];
-        const nodes = node.findAll(n => (n.type === 'TEXT' && n.visible && n.name != 'Link'));
-        const excludes = [
-            '22:03',
-            'Back',
-            'Next',
-            'space'
-        ];
-        let text;
-        for (const node of nodes) {
-            text = node.characters;
-            if (text.length > 3 &&
-                excludes.indexOf(text) === -1 &&
-                result.indexOf(text) === -1) {
-                result.push(text);
-            }
-        }
-        return result;
-    },
-    // Find  links in an info node.
-    findScreenLinks(node) {
-        const result = [];
-        const nodes = node.findAll(n => (n.type === 'TEXT' && n.visible && n.name == 'Link'));
-        let text, link;
-        for (const node of nodes) {
-            text = node.characters;
-            link = node.hyperlink;
-            if (text && text.length > 0 && link && link.type == 'URL') {
-                result.push({
-                    title: text,
-                    url: link.value
-                });
-            }
-        }
-        return result;
-    },
-    // Create a new page for storing the organized screens.
-    prepareNewPage() {
-        this.newPage = figma.createPage();
-        this.newPage.name = "Screens for export";
-        figma.root.appendChild(this.newPage);
-        // Go to our new page.
-        figma.currentPage = this.newPage;
-    },
-    // Prepares screen clones with the right export settings.
-    duplicateScreens() {
-        let item, newNode;
-        for (let i = 0; i < this.result.length; i++) {
-            item = this.result[i];
-            if (item.screen) {
-                newNode = item.screen.clone();
-                newNode.name = item.id;
-                newNode.cornerRadius = 40;
-                newNode.x = this.newNodes.length % 10 * 475;
-                newNode.y = Math.floor(this.newNodes.length / 10) * 912;
-                newNode.exportSettings = [
-                    {
-                        contentsOnly: true,
-                        format: 'PNG',
-                        suffix: '-preview',
-                        constraint: {
-                            type: 'WIDTH',
-                            value: 200
-                        }
-                    },
-                    {
-                        contentsOnly: true,
-                        format: 'PNG',
-                        suffix: '-preview@2x',
-                        constraint: {
-                            type: 'WIDTH',
-                            value: 400
-                        }
-                    },
-                    {
-                        contentsOnly: true,
-                        format: 'PNG',
-                        constraint: {
-                            type: 'WIDTH',
-                            value: 375
-                        }
-                    },
-                    {
-                        contentsOnly: true,
-                        format: 'PNG',
-                        suffix: '@2x',
-                        constraint: {
-                            type: 'WIDTH',
-                            value: 750
-                        }
-                    }
-                ];
-                this.deleteHiddenChildren(newNode);
-                this.newPage.appendChild(newNode);
-                this.newNodes.push(newNode);
-            }
-            else {
-                console.log('info without a screen?', item);
-            }
-        }
-    },
-    // Create a text node to store JSON data.
-    prepareDataOutput() {
-        const textNode = figma.createText();
-        textNode.x = -1100;
-        textNode.y = 0;
-        textNode.resize(1000, 1000);
-        for (let i = 0; i < this.result.length; i++) {
-            delete this.result[i].screen;
-        }
-        figma.loadFontAsync({ family: "Inter", style: "Regular" }).then(() => {
-            textNode.fontName = {
-                family: 'Inter',
-                style: 'Regular'
-            };
-            textNode.characters = JSON.stringify(this.result);
-        });
-    },
-    scanPages() {
-        const pages = figma.root.children;
-        let page, name;
-        for (let i = 0; i < pages.length; i++) {
-            page = pages[i];
-            name = page.name;
-            if (name == '-') {
-                break;
-            }
-            else {
-                this.scanPage(page);
-            }
-        }
-    },
-    scanPage(page) {
-        console.log('scanPage', page);
-        figma.currentPage = page;
-        this.findScreenInfos();
-    },
-    start() {
-        this.result = [];
-        this.newPage = null;
-        this.newNodes = [];
-        if (figma.currentPage.selection && figma.currentPage.selection.length > 0) {
-            // Go over nodes the user has selected
-            this.findSelectedScreenInfos();
-        }
-        else {
-            // Scan all pages for screens.
-            this.scanPages();
-        }
-        if (this.result.length > 0) {
-            this.prepareNewPage();
-            this.duplicateScreens();
-            this.prepareDataOutput();
-            this.newPage.selection = this.newNodes;
-        }
-        console.log('result', this.result);
-    }
-};
-/*
-
 Component insights code
 
  */
-const componentInsights = {
-    start() {
-        const data = this.scanPages();
-        figma.ui.postMessage({ type: 'component-insights', data });
-    },
-    scanPages() {
-        const data = {
-            nodes: 0,
-            issues: 0,
-            pages: []
-        };
+const insightsData = {
+    nodes: 0,
+    issues: 0,
+    pages: []
+};
+let insightsCurrentPage = 0;
+function insightsStart() {
+    return __awaiter(this, void 0, void 0, function* () {
+        // console.log('insightsStart')
+        yield figma.loadAllPagesAsync();
+        insightsData.nodes = 0;
+        insightsData.issues = 0;
+        insightsData.pages = [];
+        insightsCurrentPage = 0;
+        yield insightsScanPages();
+    });
+}
+function insightsEnd() {
+    figma.ui.postMessage({
+        type: 'component-insights',
+        data: insightsData
+    });
+}
+function insightsScanPages() {
+    return __awaiter(this, void 0, void 0, function* () {
+        // console.log('insightsScanPages', insightsCurrentPage)
         const pages = figma.root.children;
-        let page;
-        for (let i = 0; i < pages.length; i++) {
-            page = pages[i];
-            this.scanPage(page, data);
+        const page = pages[insightsCurrentPage];
+        yield insightsScanPage(page);
+        insightsCurrentPage++;
+        if (insightsCurrentPage >= pages.length) {
+            insightsEnd();
         }
-        return data;
-    },
-    scanPage(page, data) {
-        // console.log('scanPage', page.name)
+        else {
+            setTimeout(insightsScanPages, 1);
+        }
+        // let page
+        // for(let i=0; i<pages.length; i++) {
+        //   page = pages[i]
+        //   await insightsScanPage(page, data)
+        // }
+    });
+}
+function insightsScanPage(page) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const data = insightsData;
+        // console.log('insightsScanPage', page.name)
         const nodeData = {
             name: page.name,
             instances: [],
             components: []
         };
-        figma.currentPage = page;
-        this.findComponents(figma.currentPage, nodeData, data);
+        yield figma.setCurrentPageAsync(page);
+        yield insightsFindComponents(figma.currentPage, nodeData, data);
         data.pages.push(nodeData);
-    },
-    findComponents(node, data, outputData) {
-        // console.log('findComponents', node, node.children, node.name)
+    });
+}
+function insightsFindComponents(node, data, outputData) {
+    return __awaiter(this, void 0, void 0, function* () {
+        // console.log('insightsFindComponents', node, node.children, node.name)
         let child;
         for (let i = 0; i < node.children.length; i++) {
             child = node.children[i];
@@ -551,22 +292,7 @@ const componentInsights = {
             // console.log('type', child.type)
             outputData.nodes++;
             if (child.type == 'INSTANCE') {
-                // console.log('insto', child.name, child.mainComponent.parent, child)
-                // console.log('child.mainComponent', child.mainComponent)
-                // console.log('child.mainComponent.remote', child.mainComponent.remote)
-                // console.log('child.mainComponent.parent', child.mainComponent.parent)
-                if (child.mainComponent.remote || !child.mainComponent.parent) {
-                    outputData.issues++;
-                    data.instances.push({
-                        name: child.name,
-                        id: child.id,
-                        main: {
-                            name: child.mainComponent.name,
-                            remote: child.mainComponent.remote,
-                            removed: !child.mainComponent.parent
-                        }
-                    });
-                }
+                yield insightsFindComponentsChildMainComponent(child, data, outputData);
             }
             else if (child.type == 'COMPONENT') {
                 // console.log('compo', child.name, child.removed)
@@ -584,18 +310,40 @@ const componentInsights = {
                 // If it's a group, go deeper.
             }
             if (child.children) {
-                this.findComponents(child, data, outputData);
+                yield insightsFindComponents(child, data, outputData);
             }
         }
-    }
-};
+        // console.log('insightsFindComponents done')
+    });
+}
+function insightsFindComponentsChildMainComponent(child, data, outputData) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const mainComponent = yield child.getMainComponentAsync();
+        // console.log('insto', child.name, childMainComponent.parent, child)
+        // console.log('child.mainComponent', childMainComponent)
+        // console.log('childMainComponent.remote', childMainComponent.remote)
+        // console.log('childMainComponent.parent', childMainComponent.parent)
+        if (mainComponent && (mainComponent.remote || !mainComponent.parent)) {
+            outputData.issues++;
+            data.instances.push({
+                name: child.name,
+                id: child.id,
+                main: {
+                    name: mainComponent.name,
+                    remote: mainComponent.remote,
+                    removed: !mainComponent.parent
+                }
+            });
+        }
+    });
+}
 /*
 
-Find instances
+Find instances of a component in the current selection or page
 
  */
-const findInstances = {
-    start() {
+function findInstancesStart() {
+    return __awaiter(this, void 0, void 0, function* () {
         let data = null;
         let message = null;
         const nodes = figma.currentPage.selection;
@@ -618,21 +366,24 @@ const findInstances = {
                 page: parent.name,
                 instances: []
             };
-            let i = 0, k, instance, node;
+            let i = 0, k, instance, node, nodeInstances;
             for (; i < nodesToCheck.length; i++) {
                 node = nodesToCheck[i];
-                if (node.type == 'COMPONENT' && node.instances && node.instances.length > 0) {
-                    for (k = 0; k < node.instances.length; k++) {
-                        instance = node.instances[k];
-                        parent = instance.parent;
-                        while (parent.type !== 'PAGE' && parent.parent) {
-                            parent = parent.parent;
+                if (node.type == 'COMPONENT') {
+                    nodeInstances = yield node.getInstancesAsync();
+                    if (nodeInstances && nodeInstances.length > 0) {
+                        for (k = 0; k < nodeInstances.length; k++) {
+                            instance = nodeInstances[k];
+                            parent = instance.parent;
+                            while (parent.type !== 'PAGE' && parent.parent) {
+                                parent = parent.parent;
+                            }
+                            data.instances.push({
+                                id: instance.id,
+                                page: parent.name,
+                                name: instance.name
+                            });
                         }
-                        data.instances.push({
-                            id: instance.id,
-                            page: parent.name,
-                            name: instance.name
-                        });
                     }
                 }
             }
@@ -645,29 +396,351 @@ const findInstances = {
             data,
             message
         });
-    }
+    });
+}
+/*
+
+Screen export stuff below
+
+ */
+const exporter = {
+    result: [],
+    newPage: null,
+    newNodes: []
 };
-// Theming
-const theme = {
-    start() {
-        const data = this.findData();
+function exporterFindSelectedScreenInfos() {
+    // Get all selected nodes.
+    const nodes = figma.currentPage.selection;
+    for (const node of nodes) {
+        // console.log('node', node.name, node.type)
+        if (node.type == 'INSTANCE') {
+            if (node.mainComponent.parent.name == 'Screen description') {
+                // Gather details.
+                // console.log('mainComponent', node.name, node.mainComponent.name, node.mainComponent.parent.name);
+                exporterGatherScreenDescriptionDetails(node);
+            }
+        }
+    }
+}
+function exporterFindScreenInfos() {
+    // Get all nodes directly on the page.
+    // console.log('findScreenInfos', figma.currentPage);
+    const nodeInstances = figma.currentPage.findChildren(n => n.type === "INSTANCE");
+    // console.log('nodeInstances', nodeInstances)
+    for (const node of nodeInstances) {
+        // console.log('node', node)
+        // console.log('name', node.name)
+        // console.log('type', node.type)
+        if (node.type == 'INSTANCE') {
+            // console.log('type is instance')
+            // console.log('mainComponent', node.mainComponent)
+            // console.log('node.mainComponent.parent', node.mainComponent.parent)
+            if (node.mainComponent.parent.name == 'Screen description') {
+                // Gather details.
+                // console.log('mainComponent', node.name, node.mainComponent.name, node.mainComponent.parent.name);
+                exporterGatherScreenDescriptionDetails(node);
+            }
+        }
+    }
+}
+function exporterGatherScreenDescriptionDetails(node) {
+    const data = {
+        id: null,
+        title: null,
+        links: null,
+        flow: null
+    };
+    // Extract screen data.
+    exporterGetInfoText(node, data, 'Title');
+    exporterGetInfoText(node, data, 'Description');
+    exporterGetInfoText(node, data, 'Flow');
+    exporterGetInfoText(node, data, 'Page');
+    exporterGetInfoText(node, data, 'Pagemax');
+    // Find external links.
+    const links = exporterFindScreenLinks(node);
+    if (links.length > 0) {
+        data.links = links;
+    }
+    // Create a unique id that's also used for the file name
+    // Includes the flow to prevent duplication
+    const idParts = [];
+    if (data.flow) {
+        idParts.push(data.flow);
+    }
+    idParts.push(data.title);
+    data.id = exporterSlugify(idParts.join('_'));
+    // Find the matching screen design node.
+    exporterFindScreenDesign(node, data);
+    // Clear any empty data fields.
+    for (let i in data) {
+        if (data[i] === null) {
+            delete data[i];
+        }
+    }
+    exporter.result.push(data);
+}
+// Retrieve text of a specific TextNode.
+function exporterGetInfoText(node, data, childName) {
+    const textNode = node.findAll(n => n.name === childName);
+    if (textNode.length == 1) {
+        const text = textNode[0].characters;
+        // console.log('a', childName, text)
+        if (text != childName) {
+            data[exporterSlugify(childName)] = text;
+        }
+    }
+}
+function exporterSlugify(str) {
+    str = str.replace(/^\s+|\s+$/g, ''); // trim
+    str = str.toLowerCase();
+    // remove accents, swap ñ for n, etc
+    var from = "àáäâèéëêìíïîòóöôùúüûñç·/_,:;";
+    var to = "aaaaeeeeiiiioooouuuunc------";
+    for (var i = 0, l = from.length; i < l; i++) {
+        str = str.replace(new RegExp(from.charAt(i), 'g'), to.charAt(i));
+    }
+    str = str.replace(/[^a-z0-9 -]/g, '') // remove invalid chars
+        .replace(/\s+/g, '-') // collapse whitespace and replace by -
+        .replace(/-+/g, '-'); // collapse dashes
+    return str;
+}
+function exporterFindScreenDesign(infoNode, data) {
+    // Find the matching screen design (same as title of this info instance.
+    const nodes = figma.currentPage.findChildren(n => (n.name === data.title));
+    let text, deltaX, deltaY, distance;
+    for (const node of nodes) {
+        if (!(node.type == 'INSTANCE' && node.mainComponent.parent.name == 'Screen description')) {
+            // Check distance of the screen node and the info node
+            // There might be nodes with the same name, so distance
+            //  measurement helps identify the right one
+            deltaX = node.x - infoNode.x;
+            deltaY = node.y - infoNode.y;
+            distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            if (distance < 1500) {
+                data.screen = node;
+                data.width = node.width;
+                data.height = node.height;
+                text = exporterFindScreenTextContent(node);
+                if (text.length > 0) {
+                    data.text = text;
+                }
+                break;
+            }
+        }
+    }
+}
+// Deletes hidden children
+function exporterDeleteHiddenChildren(nodeInstance) {
+    let child;
+    for (let i = 0; i < nodeInstance.children.length; i++) {
+        child = nodeInstance.children[i];
+        if (child.visible !== true) {
+            // Delete invisible child.
+            child.remove();
+            i--;
+        }
+        else if (child.type == 'GROUP') {
+            // If it's a group, go deeper.
+            exporterDeleteHiddenChildren(child);
+        }
+    }
+}
+// Find all text nodes and grab their copy.
+function exporterFindScreenTextContent(node) {
+    const result = [];
+    const nodes = node.findAll(n => (n.type === 'TEXT' && n.visible && n.name != 'Link'));
+    const excludes = [
+        '22:03',
+        'Back',
+        'Next',
+        'space'
+    ];
+    let text;
+    for (const node of nodes) {
+        text = node.characters;
+        if (text.length > 3 &&
+            excludes.indexOf(text) === -1 &&
+            result.indexOf(text) === -1) {
+            result.push(text);
+        }
+    }
+    return result;
+}
+// Find  links in an info node.
+function exporterFindScreenLinks(node) {
+    const result = [];
+    const nodes = node.findAll(n => (n.type === 'TEXT' && n.visible && n.name == 'Link'));
+    let text, link;
+    for (const node of nodes) {
+        text = node.characters;
+        link = node.hyperlink;
+        if (text && text.length > 0 && link && link.type == 'URL') {
+            result.push({
+                title: text,
+                url: link.value
+            });
+        }
+    }
+    return result;
+}
+// Create a new page for storing the organized screens.
+function exporterPrepareNewPage() {
+    return __awaiter(this, void 0, void 0, function* () {
+        exporter.newPage = figma.createPage();
+        exporter.newPage.name = "Screens for export";
+        figma.root.appendChild(exporter.newPage);
+        // Go to our new page.
+        figma.setCurrentPageAsync(exporter.newPage);
+    });
+}
+// Prepares screen clones with the right export settings.
+function exporterDuplicateScreens() {
+    let item, newNode;
+    for (let i = 0; i < exporter.result.length; i++) {
+        item = exporter.result[i];
+        if (item.screen) {
+            newNode = item.screen.clone();
+            newNode.name = item.id;
+            newNode.cornerRadius = 40;
+            newNode.x = exporter.newNodes.length % 10 * 475;
+            newNode.y = Math.floor(exporter.newNodes.length / 10) * 912;
+            newNode.exportSettings = [
+                {
+                    contentsOnly: true,
+                    format: 'PNG',
+                    suffix: '-preview',
+                    constraint: {
+                        type: 'WIDTH',
+                        value: 200
+                    }
+                },
+                {
+                    contentsOnly: true,
+                    format: 'PNG',
+                    suffix: '-preview@2x',
+                    constraint: {
+                        type: 'WIDTH',
+                        value: 400
+                    }
+                },
+                {
+                    contentsOnly: true,
+                    format: 'PNG',
+                    constraint: {
+                        type: 'WIDTH',
+                        value: 375
+                    }
+                },
+                {
+                    contentsOnly: true,
+                    format: 'PNG',
+                    suffix: '@2x',
+                    constraint: {
+                        type: 'WIDTH',
+                        value: 750
+                    }
+                }
+            ];
+            exporterDeleteHiddenChildren(newNode);
+            exporter.newPage.appendChild(newNode);
+            exporter.newNodes.push(newNode);
+        }
+        else {
+            console.log('info without a screen?', item);
+        }
+    }
+}
+// Create a text node to store JSON data.
+function exporterPrepareDataOutput() {
+    const textNode = figma.createText();
+    textNode.x = -1100;
+    textNode.y = 0;
+    textNode.resize(1000, 1000);
+    for (let i = 0; i < exporter.result.length; i++) {
+        delete exporter.result[i].screen;
+    }
+    figma.loadFontAsync({ family: "Inter", style: "Regular" }).then(() => {
+        textNode.fontName = {
+            family: 'Inter',
+            style: 'Regular'
+        };
+        textNode.characters = JSON.stringify(exporter.result);
+    });
+}
+function exporterScanPages() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const pages = figma.root.children;
+        let page, name;
+        for (let i = 0; i < pages.length; i++) {
+            page = pages[i];
+            name = page.name;
+            if (name == '-') {
+                break;
+            }
+            else {
+                yield exporterScanPage(page);
+            }
+        }
+    });
+}
+function exporterScanPage(page) {
+    return __awaiter(this, void 0, void 0, function* () {
+        // console.log('scanPage', page)
+        yield figma.setCurrentPageAsync(page);
+        yield figma.currentPage.loadAsync();
+        exporterFindScreenInfos();
+    });
+}
+function exporterStart() {
+    return __awaiter(this, void 0, void 0, function* () {
+        // console.log('exporterStart')
+        yield figma.loadAllPagesAsync();
+        exporter.result = [];
+        exporter.newPage = null;
+        exporter.newNodes = [];
+        if (figma.currentPage.selection && figma.currentPage.selection.length > 0) {
+            // Go over nodes the user has selected
+            exporterFindSelectedScreenInfos();
+        }
+        else {
+            // Scan all pages for screens.
+            yield exporterScanPages();
+        }
+        if (exporter.result.length > 0) {
+            yield exporterPrepareNewPage();
+            exporterDuplicateScreens();
+            exporterPrepareDataOutput();
+            exporter.newPage.selection = exporter.newNodes;
+        }
+    });
+}
+/*
+
+Theming
+
+ */
+let themeUpdatePageModeData = null;
+function themeStart() {
+    return __awaiter(this, void 0, void 0, function* () {
+        yield figma.loadAllPagesAsync();
+        const data = themeFindData();
         // console.log('theme', data)
         if (data) {
             let i = 0, item;
             for (i = 0; i < data.length; i++) {
                 item = data[i];
                 if (item.Colors)
-                    this.updateColors(item.Colors);
+                    yield themeUpdateColors(item.Colors);
                 if (item.TextStyles)
-                    this.updateTextStyles(item.TextStyles);
+                    yield themeUpdateTextStyles(item.TextStyles);
                 if (item.Components)
-                    this.updateComponents(item.Components);
+                    yield themeUpdateComponents(item.Components);
                 if (item.Variables)
-                    this.updateVariables(item.Variables);
+                    yield themeUpdateVariables(item.Variables);
                 if (item.Background)
-                    this.updateBackground(item.Background);
+                    yield themeUpdateBackground(item.Background);
                 if (item.Mode)
-                    this.updateMode(item.Mode);
+                    yield themeUpdateMode(item.Mode);
             }
         }
         else {
@@ -679,7 +752,7 @@ const theme = {
                 const pages = figma.root.children;
                 for (let i = 0; i < pages.length; i++) {
                     if (pages[i].name == 'Themes') {
-                        figma.currentPage = pages[i];
+                        yield figma.setCurrentPageAsync(pages[i]);
                         break;
                     }
                 }
@@ -689,68 +762,70 @@ const theme = {
                 message
             });
         }
-    },
-    updateBackground(background) {
-        const paint = figma['util'].solidPaint(background);
-        const pages = figma.root.children;
-        for (let i = 0; i < pages.length; i++) {
-            pages[i].backgrounds = [paint];
-        }
-    },
-    updateMode(mode) {
-        indexStyles();
-        const newMode = mode == 'Dark' ? 'Light/' : 'Dark/';
-        this.updatePageModeData = {
-            index: 0,
-            mode: newMode
-        };
-        this.updatePageMode();
-    },
-    updatePageMode(data) {
-        const pages = figma.root.children;
-        const message = 'Updating page ' + (this.updatePageModeData.index + 1) + ' of ' + pages.length + '.';
-        figma.ui.postMessage({
-            type: 'general-message',
-            message
-        });
-        const page = pages[this.updatePageModeData.index];
-        toggleMode(page.children, this.updatePageModeData.mode);
-        if (this.updatePageModeData.index < (pages.length - 1)) {
-            this.updatePageModeData.index++;
-            setTimeout(this.updatePageMode.bind(this), 250);
-        }
-    },
-    // Extract JSON theme data from the currently selected text field
-    findData() {
-        let result = null;
-        const nodes = figma.currentPage.selection;
-        let i, node, k, childNodes, childNode, data, text;
-        for (i = 0; i < nodes.length; i++) {
-            node = nodes[i];
-            childNodes = node.findAllWithCriteria({ types: ['TEXT'] });
-            // console.log('childNodes', childNodes)
-            for (k = 0; k < childNodes.length; k++) {
-                childNode = childNodes[k];
-                text = childNode.characters;
-                text = text.split('“').join('"');
-                text = text.split('”').join('"');
-                try {
-                    data = JSON.parse(text);
-                    if (!result)
-                        result = [];
-                    result.push(data);
-                }
-                catch (error) {
-                    // console.log('JSON parsing error', error)
-                }
+    });
+}
+function themeUpdateBackground(background) {
+    const paint = figma['util'].solidPaint(background);
+    const pages = figma.root.children;
+    for (let i = 0; i < pages.length; i++) {
+        pages[i].backgrounds = [paint];
+    }
+}
+function themeUpdateMode(mode) {
+    indexStyles();
+    const newMode = mode == 'Dark' ? 'Light/' : 'Dark/';
+    themeUpdatePageModeData = {
+        index: 0,
+        mode: newMode
+    };
+    themeUpdatePageMode();
+}
+function themeUpdatePageMode() {
+    const pages = figma.root.children;
+    const message = 'Updating page ' + (themeUpdatePageModeData.index + 1) + ' of ' + pages.length + '.';
+    figma.ui.postMessage({
+        type: 'general-message',
+        message
+    });
+    const page = pages[themeUpdatePageModeData.index];
+    toggleMode(page.children, themeUpdatePageModeData.mode);
+    if (themeUpdatePageModeData.index < (pages.length - 1)) {
+        themeUpdatePageModeData.index++;
+        setTimeout(themeUpdatePageMode.bind(this), 250);
+    }
+}
+// Extract JSON theme data from the currently selected text field
+function themeFindData() {
+    let result = null;
+    const nodes = figma.currentPage.selection;
+    let i, node, k, childNodes, childNode, data, text;
+    for (i = 0; i < nodes.length; i++) {
+        node = nodes[i];
+        childNodes = node.findAllWithCriteria({ types: ['TEXT'] });
+        // console.log('childNodes', childNodes)
+        for (k = 0; k < childNodes.length; k++) {
+            childNode = childNodes[k];
+            text = childNode.characters;
+            text = text.split('“').join('"');
+            text = text.split('”').join('"');
+            try {
+                data = JSON.parse(text);
+                if (!result)
+                    result = [];
+                result.push(data);
+            }
+            catch (error) {
+                // console.log('JSON parsing error', error)
             }
         }
-        return result;
-    },
-    updateColors(data) {
+    }
+    return result;
+}
+function themeUpdateColors(data) {
+    return __awaiter(this, void 0, void 0, function* () {
         // console.log('updateColors', data)
         // Index all local color styles
-        const styles = figma.getLocalPaintStyles();
+        const styles = yield figma.getLocalPaintStylesAsync();
         const styleNames = {};
         for (let i = 0; i < styles.length; i++) {
             styles[styles[i].name] = styles[i].id;
@@ -759,7 +834,7 @@ const theme = {
         let styleName, styleId, style, props, paint;
         for (styleName in data) {
             styleId = styles[styleName];
-            style = figma.getStyleById(styleId);
+            style = yield figma.getStyleByIdAsync(styleId);
             // console.log('styleName', styleName)
             // console.log('styleId', styleId)
             // console.log('style', style)
@@ -778,11 +853,13 @@ const theme = {
                 }
             }
         }
-    },
-    updateTextStyles(data) {
+    });
+}
+function themeUpdateTextStyles(data) {
+    return __awaiter(this, void 0, void 0, function* () {
         // console.log('updateTextStyles', data)
         // Index all local text styles
-        const styles = figma.getLocalTextStyles();
+        const styles = yield figma.getLocalTextStylesAsync();
         const styleNames = {};
         for (let i = 0; i < styles.length; i++) {
             styles[styles[i].name] = styles[i].id;
@@ -791,7 +868,7 @@ const theme = {
         for (styleName in data) {
             styleId = styles[styleName];
             let style;
-            style = figma.getStyleById(styleId);
+            style = yield figma.getStyleByIdAsync(styleId);
             if (style) {
                 const props = data[styleName];
                 const fontName = {
@@ -831,58 +908,60 @@ const theme = {
                 });
             }
         }
-    },
-    updateComponents(data) {
-        console.log('updateComponents', data);
-        // Index all local components
-        const pages = figma.root.children;
-        const componentNames = {};
-        let i = 0, k, components, component;
-        for (; i < pages.length; i++) {
-            components = pages[i].findAllWithCriteria({
-                types: ['COMPONENT', 'COMPONENT_SET']
-            });
-            console.log('pages[i]', pages[i]);
-            console.log('components', components);
-            for (k = 0; k < components.length; k++) {
-                component = components[k];
-                if (component.type == "COMPONENT") {
-                    componentNames[component.name] = component.id;
-                }
-                else if (component.type == "COMPONENT_SET") {
-                    console.log('component', component);
-                    componentNames[component.parent.name + '/' + component.name] = component.id;
-                }
+    });
+}
+function themeUpdateComponents(data) {
+    // console.log('updateComponents', data)
+    // Index all local components
+    const pages = figma.root.children;
+    const componentNames = {};
+    let i = 0, k, components, component;
+    for (; i < pages.length; i++) {
+        components = pages[i].findAllWithCriteria({
+            types: ['COMPONENT', 'COMPONENT_SET']
+        });
+        // console.log('pages[i]', pages[i])
+        // console.log('components', components)
+        for (k = 0; k < components.length; k++) {
+            component = components[k];
+            if (component.type == "COMPONENT") {
+                componentNames[component.name] = component.id;
+            }
+            else if (component.type == "COMPONENT_SET") {
+                // console.log('component', component)
+                componentNames[component.parent.name + '/' + component.name] = component.id;
             }
         }
-        console.log('componentNames', componentNames);
-        return;
-        let componentName, nodes;
-        for (componentName in data) {
-            // Search all pages for this component
-            nodes = figma.currentPage.findAllWithCriteria({
-                types: ['COMPONENT', 'COMPONENT_SET']
-            });
-        }
-    },
-    updateVariables(data) {
+    }
+    // console.log('componentNames', componentNames)
+    return;
+    let componentName, nodes;
+    for (componentName in data) {
+        // Search all pages for this component
+        nodes = figma.currentPage.findAllWithCriteria({
+            types: ['COMPONENT', 'COMPONENT_SET']
+        });
+    }
+}
+function themeUpdateVariables(data) {
+    return __awaiter(this, void 0, void 0, function* () {
         // console.log('updateVariables', data)
         // Index all local variables
-        const variables = figma.variables.getLocalVariables();
+        const variables = yield figma.variables.getLocalVariablesAsync();
         const variableNames = {};
         for (let i = 0; i < variables.length; i++) {
             variableNames[variables[i].name] = variables[i].id;
         }
         // Get our current mode
-        const collections = figma.variables.getLocalVariableCollections();
+        const collections = yield figma.variables.getLocalVariableCollectionsAsync();
         const modeId = collections[0].defaultModeId;
         let variableName, variableId, variable, props;
         for (variableName in data) {
             variableId = variableNames[variableName];
-            variable = figma.variables.getVariableById(variableId);
+            variable = yield figma.variables.getVariableByIdAsync(variableId);
             if (variable) {
                 variable.setValueForMode(modeId, data[variableName]);
             }
         }
-    }
-};
+    });
+}
